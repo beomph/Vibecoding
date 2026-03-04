@@ -265,6 +265,18 @@ function normalizeText(s) {
     return String(s || "").replace(/\r\n/g, "\n").trim();
 }
 
+async function fetchJsonWithTimeout(url, init, timeoutMs = 45000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(url, { ...init, signal: controller.signal });
+        const data = await res.json().catch(() => ({}));
+        return { res, data };
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 async function sendChat(text) {
     const content = normalizeText(text);
     if (!content || chatState.busy) return;
@@ -299,27 +311,48 @@ async function sendChat(text) {
                 ? { input: content, model: "gpt-4.1-mini", temperature: 0.7 }
                 : { messages: chatState.messages, model: "gpt-4.1-mini", temperature: 0.7 };
 
-        const accessCode = getAccessCode();
+        let accessCode = getAccessCode();
+        let lastError = null;
+        let data = {};
 
-        const res = await fetch(url, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                ...(accessCode ? { "X-H2GO-Access-Code": accessCode } : {}),
-            },
-            body: JSON.stringify(body),
-        });
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const r = await fetchJsonWithTimeout(
+                url,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(accessCode ? { "X-H2GO-Access-Code": accessCode } : {}),
+                    },
+                    body: JSON.stringify(body),
+                },
+                45000
+            );
 
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-            // 접속 코드가 필요하면 1회만 물어보고 재시도
+            const res = r.res;
+            data = r.data;
+
+            if (res.ok) {
+                lastError = null;
+                break;
+            }
+
+            // 접속 코드가 필요하거나(또는 코드가 틀린) 경우: 한 번만 다시 입력 받아 재시도
             if (res.status === 401 && String(data?.error || "").includes("access_code_required")) {
                 const next = await promptForAccessCode();
-                if (!next) throw new Error("접속 코드가 필요합니다. `/access`로 설정해 주세요.");
-                return await sendChat(content);
+                if (!next) {
+                    lastError = new Error("접속 코드가 필요합니다. 채팅창에 `/access`를 입력해 설정해 주세요.");
+                    break;
+                }
+                accessCode = next;
+                continue;
             }
-            throw new Error(data?.detail || data?.error || `요청 실패 (HTTP ${res.status})`);
+
+            lastError = new Error(data?.detail || data?.error || `요청 실패 (HTTP ${res.status})`);
+            break;
         }
+
+        if (lastError) throw lastError;
 
         const reply = normalizeText(data?.text || "");
         const finalText = reply || "답변을 생성하지 못했습니다. 다시 시도해 주세요.";
@@ -332,6 +365,13 @@ async function sendChat(text) {
     } catch (e) {
         const msg = (e?.message || "").trim();
         let friendly = msg || "오류가 발생했습니다.";
+        if (e?.name === "AbortError") {
+            friendly =
+                "응답이 너무 오래 걸려 요청을 중단했습니다(45초).\n" +
+                "- 잠시 후 다시 시도해 주세요.\n" +
+                "- Render 무료 플랜은 첫 요청이 느릴 수 있어요.\n" +
+                "- 계속 반복되면 서버 로그에서 OpenAI 호출이 멈추는지 확인이 필요합니다.";
+        }
         if (/failed to fetch|networkerror|fetch/i.test(msg)) {
             friendly =
                 "서버 연결에 실패했습니다.\n" +

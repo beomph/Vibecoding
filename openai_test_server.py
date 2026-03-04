@@ -372,7 +372,11 @@ class Handler(BaseHTTPRequestHandler):
                 },
             )
 
-        client = OpenAI(api_key=api_key)
+        # OpenAI 호출이 무한 대기 상태가 되지 않도록, 지원되는 버전에서는 timeout을 설정합니다.
+        try:
+            client = OpenAI(api_key=api_key, timeout=30.0, max_retries=2)
+        except TypeError:
+            client = OpenAI(api_key=api_key)
         try:
             # 문제점: 이전에 Node 서버를 쓰려 했지만 PC에 Node가 설치되어 있지 않아(=서버 미실행) localhost 접속이 실패했음
             # 해결: 파이썬 표준 라이브러리 기반 로컬 서버로 대체하여, Node 설치 없이도 키 테스트가 가능하게 구성
