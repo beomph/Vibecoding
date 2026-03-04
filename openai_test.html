@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenAI API 키 테스트 (로컬)</title>
+    <link rel="stylesheet" href="./openai_test.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <header class="header">
+        <div class="pill">Localhost · Python</div>
+        <h1>OpenAI API 키 테스트</h1>
+        <p class="sub">
+          브라우저에 키를 넣지 않고, 로컬 서버(<code>openai_test_server.py</code>)가 환경변수
+          <code>OPENAI_API_KEY</code>로 안전하게 호출합니다.
+        </p>
+      </header>
+
+      <section class="card">
+        <div class="grid">
+          <div>
+            <label class="label" for="model">모델</label>
+            <select id="model" class="input">
+              <option value="gpt-4.1-mini" selected>gpt-4.1-mini (권장)</option>
+              <option value="gpt-4.1">gpt-4.1</option>
+              <option value="gpt-5">gpt-5</option>
+              <option value="gpt-5.2">gpt-5.2</option>
+            </select>
+          </div>
+          <div>
+            <label class="label" for="temperature">temperature</label>
+            <input id="temperature" class="input" type="number" min="0" max="2" step="0.1" value="0.7" />
+          </div>
+        </div>
+
+        <label class="label" for="prompt">메시지</label>
+        <textarea
+          id="prompt"
+          class="textarea"
+          rows="6"
+          placeholder="예: 안녕하세요. 오늘 해야 할 일을 3개만 정리해줘"
+        ></textarea>
+
+        <div class="row">
+          <button id="sendBtn" class="btn" type="button">전송</button>
+          <button id="clearBtn" class="btn ghost" type="button">초기화</button>
+          <span id="status" class="status" aria-live="polite"></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="label">응답</div>
+        <pre id="output" class="output"></pre>
+      </section>
+
+      <section class="card subtle">
+        <div class="label">요청/응답 원본(JSON)</div>
+        <pre id="raw" class="output small"></pre>
+      </section>
+
+      <footer class="footer">
+        <span class="hint">
+          서버 엔드포인트: <code>POST /api/respond</code> · 브라우저: <code>http://localhost:3000</code>
+        </span>
+      </footer>
+    </main>
+
+    <script src="./openai_test.js"></script>
+  </body>
+</html>
+
