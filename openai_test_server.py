@@ -167,6 +167,56 @@ class Handler(BaseHTTPRequestHandler):
         _add_cors(self)
         self.end_headers()
 
+    def do_HEAD(self) -> None:
+        """
+        Render는 포트 감지를 위해 HEAD 요청을 보낼 수 있습니다.
+        BaseHTTPRequestHandler 기본 구현은 501을 반환하므로, 최소한의 HEAD 처리를 제공합니다.
+        """
+        parsed = urlparse(self.path)
+
+        if parsed.path == "/api/health":
+            self.send_response(200)
+            _add_cors(self)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+
+        # 루트/인덱스는 항상 index.html
+        if parsed.path in ("/", "/index.html"):
+            target = (BASE_DIR / "index.html").resolve()
+            if not target.exists() or not target.is_file():
+                self.send_error(404)
+                return
+            ctype = "text/html; charset=utf-8"
+            try:
+                size = target.stat().st_size
+            except Exception:
+                size = 0
+            self.send_response(200)
+            _add_cors(self)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(size))
+            self.end_headers()
+            return
+
+        target = _safe_resolve_under_base(BASE_DIR, parsed.path)
+        if not target or not target.exists() or not target.is_file():
+            self.send_error(404)
+            return
+
+        try:
+            size = target.stat().st_size
+        except Exception:
+            size = 0
+        self.send_response(200)
+        _add_cors(self)
+        self.send_header("Content-Type", _guess_content_type(target))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(size))
+        self.end_headers()
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
 
@@ -376,8 +426,10 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> int:
-    host = "127.0.0.1"
-    port = 3000
+    # 배포(Render 등)에서는 반드시 0.0.0.0에 바인딩해야 외부에서 포트 감지가 됩니다.
+    host = "0.0.0.0"
+    # 배포 플랫폼(Render)은 PORT 환경변수를 제공합니다.
+    port = int(os.getenv("PORT") or "3000")
 
     _load_dotenv(BASE_DIR)
     if os.getenv("OPENAI_API_KEY", "").strip():
