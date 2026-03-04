@@ -221,7 +221,18 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
 
         if parsed.path == "/api/health":
-            return _json(self, 200, {"ok": True, "service": "openai_test_server", "mode": "chat"})
+            access_required = bool((os.getenv(ACCESS_CODE_ENV) or "").strip())
+            return _json(
+                self,
+                200,
+                {
+                    "ok": True,
+                    "service": "openai_test_server",
+                    "mode": "chat",
+                    "access_required": access_required,
+                    "rate_limit": {"window_sec": RATE_LIMIT_WINDOW_SEC, "max_requests": RATE_LIMIT_MAX_REQUESTS},
+                },
+            )
 
         if parsed.path == "/whoami":
             body = (
