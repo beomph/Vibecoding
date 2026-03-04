@@ -13,6 +13,18 @@ from urllib.parse import unquote, urlparse
 
 BASE_DIR = Path(__file__).resolve().parent
 
+# === 운영/보안 설정 ===
+# - OpenAI 키는 반드시 서버 환경변수(또는 .env)로만 보관하세요. 절대 브라우저/레포에 넣지 않습니다.
+# - 공개 배포 시 비용 폭탄 방지를 위해 최소 레이트리밋을 켜는 것을 강력 권장합니다.
+RATE_LIMIT_WINDOW_SEC = int(os.getenv("H2GO_RATE_WINDOW_SEC", "60"))  # 기본 60초
+RATE_LIMIT_MAX_REQUESTS = int(os.getenv("H2GO_RATE_MAX", "12"))       # 기본 60초에 12회
+
+# 선택: 접속 코드(패스워드). 설정하면 이 코드를 아는 사용자만 챗봇 사용 가능
+ACCESS_CODE_ENV = "H2GO_CHAT_ACCESS_CODE"
+
+# 메모리 기반 레이트리밋 (프로세스 재시작 시 초기화)
+_rate_logs: dict[str, list[float]] = {}
+
 
 SYSTEM_PROMPT_H2GO = """\
 당신은 H2GO(수소 거래/공급망 연결 플랫폼) 전용 AI 챗봇입니다.
@@ -31,7 +43,32 @@ SYSTEM_PROMPT_H2GO = """\
 def _add_cors(handler: BaseHTTPRequestHandler) -> None:
     handler.send_header("Access-Control-Allow-Origin", "*")
     handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-    handler.send_header("Access-Control-Allow-Headers", "Content-Type")
+    handler.send_header("Access-Control-Allow-Headers", "Content-Type, X-H2GO-Access-Code")
+
+
+def _client_ip(handler: BaseHTTPRequestHandler) -> str:
+    # 배포 환경(리버스 프록시)에서는 X-Forwarded-For가 들어올 수 있음
+    xff = (handler.headers.get("X-Forwarded-For") or "").strip()
+    if xff:
+        # "client, proxy1, proxy2" 형태일 수 있어 첫 번째를 사용
+        return xff.split(",")[0].strip() or "unknown"
+    try:
+        return str(handler.client_address[0])
+    except Exception:
+        return "unknown"
+
+
+def _rate_limit_ok(ip: str) -> bool:
+    now = time.time()
+    window_start = now - float(RATE_LIMIT_WINDOW_SEC)
+    entries = _rate_logs.get(ip) or []
+    entries = [t for t in entries if t >= window_start]
+    if len(entries) >= RATE_LIMIT_MAX_REQUESTS:
+        _rate_logs[ip] = entries
+        return False
+    entries.append(now)
+    _rate_logs[ip] = entries
+    return True
 
 
 def _load_dotenv(base_dir: Path) -> None:
@@ -187,6 +224,32 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
 
+        # 레이트리밋 (비용/남용 방지)
+        ip = _client_ip(self)
+        if not _rate_limit_ok(ip):
+            return _json(
+                self,
+                429,
+                {
+                    "error": "rate_limited",
+                    "detail": f"요청이 너무 많습니다. 잠시 후 다시 시도해 주세요. (IP={ip})",
+                },
+            )
+
+        # 선택: 접속 코드(패스워드)
+        access_required = (os.getenv(ACCESS_CODE_ENV) or "").strip()
+        if access_required:
+            provided = (self.headers.get("X-H2GO-Access-Code") or "").strip()
+            if not provided or provided != access_required:
+                return _json(
+                    self,
+                    401,
+                    {
+                        "error": "access_code_required",
+                        "detail": "챗봇 접속 코드가 필요합니다.",
+                    },
+                )
+
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
@@ -231,20 +294,18 @@ class Handler(BaseHTTPRequestHandler):
             if not messages:
                 return _json(self, 400, {"error": "유효한 messages가 없습니다."})
 
+        # OpenAI 키는 서버에서만 보관 (브라우저에서 받지 않음)
         _load_dotenv(BASE_DIR)
         api_key = os.getenv("OPENAI_API_KEY", "").strip()
         if not api_key:
-            # 문제점: 브라우저(프론트)에서 키를 넣으면 키가 노출됩니다.
-            # 해결: 서버가 환경변수 OPENAI_API_KEY로만 키를 읽도록 하여 브라우저에 키가 절대 전달되지 않게 했습니다.
             return _json(
                 self,
                 500,
                 {
                     "error": (
-                        "서버가 OPENAI_API_KEY를 읽지 못했습니다.\n"
-                        "해결 1) PowerShell: $env:OPENAI_API_KEY=\"...\" 설정 후 같은 창에서 서버 실행\n"
-                        "해결 2) 프로젝트 폴더에 .env 파일 생성 후 OPENAI_API_KEY=... 입력(권장)\n"
-                        f"(.env 위치: {str((BASE_DIR / '.env').resolve())})"
+                        "OpenAI API 키가 없습니다.\n"
+                        "- 서버(배포 환경)에서 OPENAI_API_KEY 환경변수를 설정해 주세요.\n"
+                        "- (보안상 브라우저에서 키를 입력받는 방식은 사용하지 않습니다)"
                     ),
                 },
             )
@@ -323,6 +384,14 @@ def main() -> int:
         print("OPENAI_API_KEY: 설정됨")
     else:
         print("OPENAI_API_KEY: 미설정 (요청 시 500 오류가 납니다)")
+
+    access_required = (os.getenv(ACCESS_CODE_ENV) or "").strip()
+    if access_required:
+        print(f"{ACCESS_CODE_ENV}: 설정됨 (접속 코드 필요)")
+    else:
+        print(f"{ACCESS_CODE_ENV}: 미설정 (누구나 접근 가능)")
+
+    print(f"레이트리밋: {RATE_LIMIT_WINDOW_SEC}초 동안 {RATE_LIMIT_MAX_REQUESTS}회/IP")
 
     index_path = (BASE_DIR / "index.html").resolve()
     openai_test_path = (BASE_DIR / "openai_test.html").resolve()

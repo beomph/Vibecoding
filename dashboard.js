@@ -557,7 +557,6 @@ document.getElementById('orderForm').addEventListener('submit', (e) => {
     initTimeInputs();
     renderConsumerView();
     renderSupplierView();
-    renderTransporterView();
     alert('주문이 등록되었습니다. 공급자에게 전달됩니다.');
 });
 

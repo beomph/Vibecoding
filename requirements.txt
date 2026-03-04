@@ -1,5 +1,1 @@
 openai
-fastapi
-uvicorn[standard]
-pydantic
-

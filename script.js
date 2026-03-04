@@ -121,7 +121,7 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
     });
 });
 
-// AI 챗봇 (OpenAI는 서버(server.py)에서 호출)
+// AI 챗봇 (OpenAI는 서버(openai_test_server.py)가 보관한 키로 호출)
 const chatbotFab = document.getElementById("chatbotFab");
 const chatbotPanel = document.getElementById("chatbotPanel");
 const chatbotClose = document.getElementById("chatbotClose");
@@ -130,6 +130,38 @@ const chatbotForm = document.getElementById("chatbotForm");
 const chatbotInput = document.getElementById("chatbotInput");
 const chatbotSend = document.getElementById("chatbotSend");
 const chatbotStatus = document.getElementById("chatbotStatus");
+
+const ACCESS_CODE_SESSION_KEY = "h2go_chat_access_code";
+
+function getAccessCode() {
+    try {
+        return (sessionStorage.getItem(ACCESS_CODE_SESSION_KEY) || "").trim();
+    } catch (_) {
+        return "";
+    }
+}
+
+function setAccessCode(code) {
+    try {
+        sessionStorage.setItem(ACCESS_CODE_SESSION_KEY, String(code || "").trim());
+    } catch (_) {}
+}
+
+function clearAccessCode() {
+    try {
+        sessionStorage.removeItem(ACCESS_CODE_SESSION_KEY);
+    } catch (_) {}
+}
+
+async function promptForAccessCode() {
+    const entered = window.prompt(
+        "챗봇 접속 코드를 입력하세요.\n\n- 코드는 이 브라우저 탭(session)에만 임시 저장됩니다.\n- (OpenAI API Key가 아닙니다)"
+    );
+    const code = String(entered || "").trim();
+    if (!code) return "";
+    setAccessCode(code);
+    return code;
+}
 
 let apiConfig = {
     base: "",
@@ -207,6 +239,8 @@ function setChatOpen(open) {
                     }
                 });
             });
+            addBubble("assistant", "이 챗봇은 서버에 저장된 OpenAI 키로 동작합니다. (키 입력은 필요하지 않아요)");
+            addBubble("assistant", "접속 코드가 필요한 경우, 채팅창에 `/access` 를 입력해 설정할 수 있어요.");
         }
     }
 }
@@ -235,6 +269,18 @@ async function sendChat(text) {
     const content = normalizeText(text);
     if (!content || chatState.busy) return;
 
+    if (content === "/access") {
+        const next = await promptForAccessCode();
+        if (next) addBubble("assistant", "접속 코드가 설정되었습니다.");
+        else addBubble("assistant", "접속 코드가 입력되지 않았습니다.");
+        return;
+    }
+    if (content === "/clear") {
+        clearAccessCode();
+        addBubble("assistant", "접속 코드를 이 탭에서 삭제했습니다. 필요하면 `/access` 로 다시 설정하세요.");
+        return;
+    }
+
     addBubble("user", content);
     chatState.messages.push({ role: "user", content });
 
@@ -253,14 +299,25 @@ async function sendChat(text) {
                 ? { input: content, model: "gpt-4.1-mini", temperature: 0.7 }
                 : { messages: chatState.messages, model: "gpt-4.1-mini", temperature: 0.7 };
 
+        const accessCode = getAccessCode();
+
         const res = await fetch(url, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                ...(accessCode ? { "X-H2GO-Access-Code": accessCode } : {}),
+            },
             body: JSON.stringify(body),
         });
 
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
+            // 접속 코드가 필요하면 1회만 물어보고 재시도
+            if (res.status === 401 && String(data?.error || "").includes("access_code_required")) {
+                const next = await promptForAccessCode();
+                if (!next) throw new Error("접속 코드가 필요합니다. `/access`로 설정해 주세요.");
+                return await sendChat(content);
+            }
             throw new Error(data?.detail || data?.error || `요청 실패 (HTTP ${res.status})`);
         }
 
