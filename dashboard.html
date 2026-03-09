@@ -13,18 +13,25 @@
 <body>
     <!-- 네비게이션 -->
     <nav class="navbar">
-        <a href="index.html" class="logo">
-            <span class="logo-text">H2GO</span>
+        <a href="dashboard.html" class="logo dashboard-brand" aria-label="H2GO 홈(대시보드)">
+            <!-- 로고: 이미지(검정 배경 포함) 대신 텍스트 로고로 통일 -->
+            <div class="brand-mark brand-mark--lg" aria-label="H2GO 로고">
+                <span class="brand-h2">H2</span><span class="brand-go">GO</span>
+            </div>
         </a>
-        <ul class="nav-links">
-            <li><a href="index.html">홈</a></li>
+
+        <!-- 사업자명 표시 (로그인한 계정의 name) -->
+        <div id="bizName" class="dashboard-biz-name">사업자</div>
+
+        <ul class="nav-links dashboard-nav">
+            <!-- 요청하신 순서: (로고가 홈 역할) → 모드 토글 → 로그아웃 -->
             <li class="role-switcher">
                 <select id="roleSelect" class="role-select">
-                    <option value="consumer">수요자</option>
-                    <option value="supplier">공급자</option>
+                    <option value="consumer">수요모드</option>
+                    <option value="supplier">공급모드</option>
                 </select>
             </li>
-            <li><span class="user-badge" id="userBadge">수요자 A</span></li>
+            <li><button id="logoutBtn" type="button" class="btn btn-secondary btn-tiny">로그아웃</button></li>
         </ul>
     </nav>
 
@@ -69,6 +76,14 @@
                             <div class="form-group">
                                 <label>튜브트레일러 대수</label>
                                 <input type="number" id="orderTrailers" min="1" max="10" placeholder="예: 2" required>
+                            </div>
+                        </div>
+                        <!-- 공급자 선택: 기본은 현재 사업자, 변경 버튼으로 다른 공급자 선택 가능 -->
+                        <div class="form-group">
+                            <label>공급자</label>
+                            <div class="supplier-select-row">
+                                <input type="text" id="orderSupplierName" readonly>
+                                <button type="button" class="btn btn-secondary btn-tiny" id="changeSupplierBtn">변경</button>
                             </div>
                         </div>
                         <div class="form-group">
@@ -247,7 +262,42 @@
         </div>
     </div>
 
+    <!-- 공급자 선택 모달 -->
+    <div id="supplierSelectModal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" aria-label="닫기">&times;</button>
+            <h3>공급자 선택</h3>
+            <div id="supplierList" class="supplier-list"></div>
+            <div class="form-group">
+                <label for="supplierManualInput">직접 입력</label>
+                <input type="text" id="supplierManualInput" placeholder="공급자명을 입력하세요">
+            </div>
+            <button type="button" class="btn btn-primary btn-full" id="supplierManualApplyBtn">적용</button>
+        </div>
+    </div>
+
+    <!-- AI 챗봇 -->
+    <button id="chatbotFab" class="chatbot-fab" type="button" aria-label="AI 챗봇 열기">
+        AI
+    </button>
+    <section id="chatbotPanel" class="chatbot-panel" aria-label="AI 챗봇" aria-hidden="true">
+        <header class="chatbot-header">
+            <div class="chatbot-title">
+                <strong>H2GO AI</strong>
+                <span class="chatbot-subtitle">무엇을 도와드릴까요?</span>
+            </div>
+            <button id="chatbotClose" class="chatbot-close" type="button" aria-label="닫기">&times;</button>
+        </header>
+        <div id="chatbotMessages" class="chatbot-messages" role="log" aria-live="polite"></div>
+        <form id="chatbotForm" class="chatbot-form" autocomplete="off">
+            <textarea id="chatbotInput" class="chatbot-input" rows="1" placeholder="메시지를 입력하세요 (Enter 전송, Shift+Enter 줄바꿈)"></textarea>
+            <button id="chatbotSend" class="chatbot-send" type="submit">전송</button>
+        </form>
+        <div id="chatbotStatus" class="chatbot-status" aria-live="polite"></div>
+    </section>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="dashboard.js"></script>
+    <script src="chatbot.js"></script>
 </body>
 </html>

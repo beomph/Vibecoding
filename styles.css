@@ -29,6 +29,99 @@ body {
     overflow-x: hidden;
 }
 
+/* ------------------------------------------------------------
+   H2GO 텍스트 로고(배경 없는 로고)
+   - 사용처: `index.html`, `dashboard.html`의 `.brand-mark`
+   - 목적: PNG 로고의 검정 배경(이미지 자체)을 제거하고,
+           어디서나 동일한 “로고만” 표시되도록 통일
+------------------------------------------------------------ */
+.brand-mark {
+    display: inline-flex;
+    align-items: baseline;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    user-select: none;
+}
+
+.brand-h2 { color: var(--h2-blue); }
+.brand-go { color: var(--go-gray); }
+
+.brand-mark--xl { font-size: 3rem; }
+.brand-mark--lg { font-size: 2rem; }
+
+/* 로그인 전용 화면 */
+.auth-only {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    background:
+        radial-gradient(ellipse 70% 50% at 50% -10%, rgba(59, 130, 246, 0.18), transparent),
+        var(--bg-black);
+}
+
+.auth-only-main {
+    width: 100%;
+    max-width: 520px;
+}
+
+.auth-only-card {
+    background: rgba(26, 26, 26, 0.92);
+    border: 1px solid var(--border-color);
+    border-radius: 18px;
+    padding: 2.5rem;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+}
+
+/* 모바일에서 로그인 카드 여백/글자 크기 가독성 조정
+   사용처: `index.html`의 로그인/회원가입 카드(`.auth-only-card`) */
+@media (max-width: 480px) {
+    .auth-only {
+        padding: 1.25rem;
+    }
+
+    .auth-only-card {
+        padding: 1.5rem;
+        border-radius: 16px;
+    }
+
+    .brand-mark--xl {
+        font-size: 2.4rem;
+    }
+}
+
+.auth-only-brand {
+    text-align: center;
+    margin-bottom: 1.75rem;
+}
+
+.auth-only-links {
+    margin-top: 1rem;
+}
+
+.is-hidden {
+    display: none !important;
+}
+
+.auth-form select {
+    width: 100%;
+    padding: 0.875rem 1rem;
+    background: var(--bg-black);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-white);
+    font-size: 1rem;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.auth-form select:focus {
+    outline: none;
+    border-color: var(--h2-blue);
+}
+
 /* 네비게이션 */
 .navbar {
     position: fixed;

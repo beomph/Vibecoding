@@ -1,10 +1,45 @@
 /* H2GO 대시보드 스타일 */
 
-.logo-text {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--h2-blue-light);
+/* ------------------------------------------------------------
+   대시보드 브랜드 영역
+   - 사용처: `dashboard.html`의 `.dashboard-brand`(로고), `#bizName`(사업자명)
+   - 목적: 로그인 화면과 동일한 “배경 없는 로고” + 사업자명 표시
+------------------------------------------------------------ */
+.dashboard-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    padding: 0.25rem 0;
 }
+
+/* 사용처: `dashboard.html`의 `.dashboard-brand .brand-mark` */
+.dashboard-brand .brand-mark {
+    filter: drop-shadow(0 0 18px rgba(59, 130, 246, 0.18));
+}
+
+.dashboard-biz-name {
+    /* 사용처: `dashboard.html`의 `#bizName` */
+    margin-top: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: var(--text-white);
+    text-align: center;
+    padding: 0.55rem 0.9rem;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ------------------------------------------------------------
+   반응형 레이아웃 목표
+   - PC(와이드): 좌측 사이드 메뉴(.navbar), 우측 메인(.dashboard-main)
+   - 모바일: 상단 네비게이션 + 세로 스택(폼/리스트/카드)
+
+   사용처:
+   - `dashboard.html`의 `<nav class="navbar"> ... </nav>`
+   - `dashboard.html`의 `<main class="dashboard-main"> ... </main>`
+------------------------------------------------------------ */
 
 .role-select {
     padding: 0.5rem 1rem;
@@ -26,12 +61,156 @@
     background: rgba(59, 130, 246, 0.2);
     border-radius: 6px;
     font-size: 0.9rem;
+    /* 사용처: `dashboard.html`의 `#userBadge` (사업자명 표시) */
 }
 
 .dashboard-main {
     padding: 6rem 2rem 4rem;
     max-width: 1200px;
     margin: 0 auto;
+}
+
+/* ------------------------------------------------------------
+   PC(와이드) 레이아웃: 사이드바 네비게이션
+   - 사용처: `dashboard.html`의 `.navbar`, `.nav-links`, `.dashboard-main`
+   - 동작: viewport >= 1024px 에서 상단바를 좌측 고정 메뉴로 변경
+------------------------------------------------------------ */
+@media (min-width: 1024px) {
+    /* 사이드바 폭을 고정값이 아니라 viewport에 맞춰 유동화해서,
+       PC에서 창 폭을 줄여도 메인 컨텐츠가 과도하게 좁아지지 않도록 함 */
+    :root {
+        --h2go-sidebar-w: clamp(220px, 22vw, 280px);
+    }
+
+    .navbar {
+        /* `styles.css`의 상단 고정 네비게이션을 덮어써서 좌측 사이드바로 전환 */
+        top: 0;
+        left: 0;
+        right: auto;
+        bottom: 0;
+        width: var(--h2go-sidebar-w);
+        height: 100vh;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        padding: 1.25rem 1rem;
+        border-right: 1px solid var(--border-color);
+        border-bottom: none;
+    }
+
+    .navbar .logo {
+        /* 로고 영역을 사이드바 상단에 배치 */
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        padding: 0.25rem 0.5rem 1rem;
+    }
+
+    /* PC(와이드): 로고/사업자명은 좌측 정렬이 더 자연스러움 */
+    .dashboard-brand {
+        justify-content: flex-start;
+        padding: 0.25rem 0.5rem 0;
+    }
+
+    .dashboard-biz-name {
+        text-align: left;
+        margin-top: 0.5rem;
+        margin-left: 0.5rem;
+        margin-right: 0.5rem;
+    }
+
+    .nav-links {
+        /* 메뉴/컨트롤을 세로 스택으로 배치 */
+        width: 100%;
+        flex-direction: column;
+        gap: 0.75rem;
+        align-items: stretch;
+        padding: 0.5rem;
+        margin-top: 0.5rem;
+    }
+
+    .nav-links > li {
+        width: 100%;
+    }
+
+    .nav-links a {
+        /* 사이드바 메뉴 버튼 느낌 */
+        display: block;
+        width: 100%;
+        padding: 0.75rem 0.9rem;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        /* 창 폭이 줄어도 글자가 세로로 한 글자씩 쪼개지지 않게 */
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .nav-links a:hover {
+        background: rgba(59, 130, 246, 0.10);
+        border-color: rgba(59, 130, 246, 0.25);
+    }
+
+    .role-select {
+        width: 100%;
+    }
+
+    #logoutBtn {
+        width: 100%;
+    }
+
+    .dashboard-main {
+        /* 메인 컨텐츠가 사이드바를 피해가도록 */
+        max-width: 1400px;
+        margin-left: var(--h2go-sidebar-w);
+        padding: 2rem 2.25rem 3.5rem;
+    }
+}
+
+/* ------------------------------------------------------------
+   모바일(세로) 레이아웃: 상단바 + 세로 스택
+   - 사용처: `dashboard.html`의 `.navbar`, `.nav-links`
+   - 동작: 작은 화면에서 컨트롤을 줄바꿈/가독성 위주로 재배치
+------------------------------------------------------------ */
+@media (max-width: 768px) {
+    .navbar {
+        padding: 0.9rem 1rem;
+    }
+
+    .nav-links {
+        /* 상단바에서 한 줄에 우겨넣지 않고, 필요한 만큼 줄바꿈 */
+        width: 100%;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+        justify-content: flex-end;
+    }
+
+    .role-switcher {
+        /* 모드 셀렉트는 가독성을 위해 한 줄 전체를 차지 */
+        flex: 1 1 100%;
+        order: 3;
+    }
+
+    .role-select {
+        width: 100%;
+    }
+
+    #logoutBtn {
+        padding: 0.55rem 0.75rem;
+    }
+
+    .dashboard-main {
+        /* 상단바 높이 고려 */
+        padding: 7.5rem 1rem 3rem;
+    }
+
+    .dashboard-biz-name {
+        /* 모바일에서는 상단바 아래쪽 공간이 적어 살짝 컴팩트하게 */
+        margin-top: 0.6rem;
+        padding: 0.45rem 0.75rem;
+        font-size: 0.95rem;
+    }
 }
 
 .dashboard-view {
@@ -62,11 +241,30 @@
     font-size: 1rem;
 }
 
+/* 텍스트 줄바꿈 규칙(가독성)
+   - 목적: 창 폭이 줄어도 한 글자씩 세로로 떨어지는 현상 최소화
+   - 사용처: 대시보드 본문 전반 */
+.dashboard-main,
+.dashboard-main * {
+    word-break: keep-all;
+    overflow-wrap: anywhere; /* 긴 토큰(주소/ID)이 있으면 적절히 줄바꿈 */
+}
+
 /* 수요자 화면 */
 .consumer-content {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 2rem;
+}
+
+/* PC(와이드): 충분히 넓을 때만(1280px+) 폼/리스트 2열 비율을 조정
+   - 1024~1279px 구간은 사이드바 때문에 실질 폭이 좁을 수 있어 1열/기본 비율 유지 */
+@media (min-width: 1280px) {
+    .consumer-content {
+        /* 사용처: `dashboard.html`의 `.consumer-content` */
+        grid-template-columns: 1.15fr 0.85fr;
+        gap: 2.25rem;
+    }
 }
 
 @media (max-width: 900px) {
@@ -204,6 +402,14 @@
     overflow-y: auto;
 }
 
+/* 모바일: 리스트 높이를 화면에 맞게 자연스럽게(잘림/스크롤 피로 감소)
+   사용처: `dashboard.html`의 `#consumerOrdersList`가 포함된 `.orders-list` */
+@media (max-width: 768px) {
+    .orders-list {
+        max-height: none;
+    }
+}
+
 .order-item {
     padding: 1rem;
     background: var(--bg-dark);
@@ -280,6 +486,71 @@
     overflow-x: auto;
 }
 
+/* ------------------------------------------------------------
+   공급자 선택 UI (수요모드 주문 등록)
+   - 사용처: `dashboard.html`의 `#orderSupplierName`, `#changeSupplierBtn`
+   - 목적: 기본 공급자 표시 + 변경 버튼으로 다른 공급자 선택
+------------------------------------------------------------ */
+.supplier-select-row {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.supplier-select-row input[readonly] {
+    flex: 1;
+    background: rgba(10, 10, 10, 0.6);
+}
+
+.supplier-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 1rem 0 1.25rem;
+}
+
+.supplier-list button {
+    width: 100%;
+    text-align: left;
+    padding: 0.85rem 1rem;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-white);
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.supplier-list button:hover {
+    border-color: rgba(59, 130, 246, 0.35);
+    background: rgba(59, 130, 246, 0.12);
+}
+
+/* 변경요청 요약 텍스트
+   - 사용처: `dashboard.js`가 렌더링하는 `.change-summary` */
+.change-summary {
+    margin-top: 0.35rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    line-height: 1.45;
+}
+
+/* 모바일: 테이블은 가로 스크롤이 생기기 쉬워서 터치 스크롤과 가독성(줄바꿈 방지) 개선
+   사용처: `dashboard.html`의 `.orders-table-card .table-wrapper` */
+@media (max-width: 768px) {
+    .table-wrapper {
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 0.5rem;
+    }
+
+    .orders-table th,
+    .orders-table td {
+        padding: 0.75rem 0.8rem;
+        font-size: 0.9rem;
+        white-space: nowrap;
+    }
+}
+
 .orders-table {
     width: 100%;
     border-collapse: collapse;
@@ -321,6 +592,14 @@
     grid-template-columns: 1fr 1.5fr;
     gap: 2rem;
     margin-top: 2rem;
+}
+
+/* PC에서 창 폭을 줄였을 때(또는 작은 노트북) 2열이 과도하게 좁아지는 문제 방지
+   - 사용처: 공급모드 하단 `.supplier-bottom-grid` */
+@media (max-width: 1280px) {
+    .supplier-bottom-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 1024px) {
