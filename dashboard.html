@@ -39,32 +39,33 @@
         <!-- ========== 수요자 화면 ========== -->
         <section id="consumerView" class="dashboard-view active">
             <div class="view-header">
-                <h1>수소 주문</h1>
-                <p>생산자에게 수소 주문을 요청하세요</p>
+                <h1>수요 대시보드</h1>
+                <p>수소 재고를 실시간으로 파악하고 최적의 발주 시점을 결정하세요</p>
             </div>
-            
+
             <div class="consumer-content">
-                <div class="order-form-card">
-                    <h3>새 주문 등록</h3>
-                    <form id="orderForm" class="order-form">
-                        <div class="form-row form-row-3">
-                            <div class="form-group">
-                                <label>연도</label>
-                                <input type="number" id="orderYear" min="2025" max="2030" value="2025" required>
+                <!-- 왼쪽: 새 주문 + 주문 현황 -->
+                <div class="consumer-left">
+                    <div class="order-form-card">
+                        <h3>새 주문</h3>
+                        <form id="orderForm" class="order-form">
+                            <div class="form-row form-row-3">
+                                <div class="form-group">
+                                    <label>연도</label>
+                                    <input type="number" id="orderYear" min="2025" max="2030" value="2025" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>월</label>
+                                    <input type="number" id="orderMonth" min="1" max="12" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>일</label>
+                                    <input type="number" id="orderDay" min="1" max="31" required>
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label>월</label>
-                                <input type="number" id="orderMonth" min="1" max="12" required>
-                            </div>
-                            <div class="form-group">
-                                <label>일</label>
-                                <input type="number" id="orderDay" min="1" max="31" required>
-                            </div>
-                        </div>
-                        <div class="form-row form-row-time">
-                            <div class="form-group">
-                                <label>희망 납품 시각 (30분 단위)</label>
-                                <div class="time-input-group">
+                                <label>희망 납품 시각 <small style="font-weight:400;color:var(--text-muted)">(30분 단위)</small></label>
+                                <div class="time-input-group time-compact">
                                     <input type="number" id="orderHour" min="0" max="23" placeholder="시" required>
                                     <span class="time-separator">:</span>
                                     <select id="orderMinute">
@@ -74,33 +75,62 @@
                                 </div>
                             </div>
                             <div class="form-group">
-                                <label>튜브트레일러 대수</label>
-                                <input type="number" id="orderTrailers" min="1" max="10" placeholder="예: 2" required>
+                                <label>공급자</label>
+                                <div class="supplier-select-row">
+                                    <input type="text" id="orderSupplierName" readonly>
+                                    <button type="button" class="btn btn-secondary btn-tiny" id="changeSupplierBtn">변경</button>
+                                </div>
                             </div>
-                        </div>
-                        <!-- 공급자 선택: 기본은 현재 사업자, 변경 버튼으로 다른 공급자 선택 가능 -->
-                        <div class="form-group">
-                            <label>공급자</label>
-                            <div class="supplier-select-row">
-                                <input type="text" id="orderSupplierName" readonly>
-                                <button type="button" class="btn btn-secondary btn-tiny" id="changeSupplierBtn">변경</button>
+                            <div class="form-group">
+                                <label>납품 주소</label>
+                                <input type="text" id="orderAddress" placeholder="예: 서울시 강남구 테헤란로 123" required>
                             </div>
-                        </div>
-                        <div class="form-group">
-                            <label>납품 주소</label>
-                            <input type="text" id="orderAddress" placeholder="예: 서울시 강남구 테헤란로 123" required>
-                        </div>
-                        <div class="form-group">
-                            <label>요청 사항</label>
-                            <textarea id="orderNote" rows="2" placeholder="특별 요청사항을 입력하세요"></textarea>
-                        </div>
-                        <button type="submit" class="btn btn-primary">주문 요청</button>
-                    </form>
+                            <div class="form-group">
+                                <label>요청 사항</label>
+                                <textarea id="orderNote" rows="2" placeholder="특별 요청사항을 입력하세요"></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary">주문 요청</button>
+                        </form>
+                    </div>
+
+                    <div class="my-orders-card">
+                        <h3>주문 현황</h3>
+                        <div id="consumerOrdersList" class="orders-list"></div>
+                    </div>
                 </div>
-                
-                <div class="my-orders-card">
-                    <h3>내 주문 현황</h3>
-                    <div id="consumerOrdersList" class="orders-list"></div>
+
+                <!-- 오른쪽: 재고 현황 & 발주 예측 -->
+                <div class="consumer-right">
+                    <div class="inventory-card">
+                        <h3>🔋 수소 재고 현황</h3>
+                        <div class="trailer-header-row">
+                            <span class="inv-section-label">튜브트레일러 잔압</span>
+                            <button type="button" class="btn btn-tiny" id="addTrailerBtn">+ 추가</button>
+                        </div>
+                        <div id="trailerStatusList" class="trailer-list"></div>
+                        <div class="inv-settings">
+                            <div class="inv-setting-row">
+                                <label>충전 대기 고객</label>
+                                <div class="inv-setting-input">
+                                    <input type="number" id="waitingCustomers" min="0" max="99" value="0">
+                                    <span>대</span>
+                                </div>
+                                <span class="inv-setting-hint">현재 충전 대기 중인 수소차</span>
+                            </div>
+                            <div class="inv-setting-row">
+                                <label>납품 소요 시간</label>
+                                <span id="leadTimeDisplay" class="inv-lead-display">—</span>
+                                <span class="inv-setting-hint" id="leadTimeHint"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="prediction-card">
+                        <h3>📊 발주 예측 &amp; 권고</h3>
+                        <div id="predictionDisplay" class="prediction-content">
+                            <div class="empty-state"><p>재고 정보를 입력하면 예측이 표시됩니다.</p></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
