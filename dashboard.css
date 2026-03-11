@@ -250,20 +250,31 @@
     overflow-wrap: anywhere; /* 긴 토큰(주소/ID)이 있으면 적절히 줄바꿈 */
 }
 
-/* 수요자 화면 */
+/* 수요자 화면 - 2컬럼(왼쪽:주문관리, 오른쪽:재고/예측) */
 .consumer-content {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1.15fr;
     gap: 2rem;
+    align-items: start;
 }
 
-/* PC(와이드): 충분히 넓을 때만(1280px+) 폼/리스트 2열 비율을 조정
-   - 1024~1279px 구간은 사이드바 때문에 실질 폭이 좁을 수 있어 1열/기본 비율 유지 */
-@media (min-width: 1280px) {
-    .consumer-content {
-        /* 사용처: `dashboard.html`의 `.consumer-content` */
-        grid-template-columns: 1.15fr 0.85fr;
-        gap: 2.25rem;
+.consumer-left {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.consumer-right {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    position: sticky;
+    top: 2rem;
+}
+
+@media (max-width: 1024px) {
+    .consumer-right {
+        position: static;
     }
 }
 
@@ -271,6 +282,254 @@
     .consumer-content {
         grid-template-columns: 1fr;
     }
+}
+
+/* 납품 시각 컴팩트 */
+.time-input-group.time-compact {
+    max-width: 180px;
+}
+
+/* 재고 현황 & 예측 카드 */
+.inventory-card,
+.prediction-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 1.5rem;
+}
+
+.inventory-card h3,
+.prediction-card h3 {
+    font-size: 1.05rem;
+    margin-bottom: 1.1rem;
+    padding-bottom: 0.8rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.prediction-card {
+    border-color: rgba(59, 130, 246, 0.3);
+}
+
+/* 트레일러 헤더 */
+.trailer-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.65rem;
+}
+
+.inv-section-label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+/* 트레일러 목록 */
+.trailer-list {
+    margin-bottom: 0.75rem;
+}
+
+.trailer-row {
+    display: grid;
+    grid-template-columns: 26px 1fr auto auto;
+    gap: 0.45rem;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.trailer-id {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-align: center;
+}
+
+.pressure-bar-bg {
+    height: 7px;
+    background: rgba(255, 255, 255, 0.07);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.pressure-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.35s ease;
+}
+
+.pressure-bar-fill.full { background: var(--h2-blue); }
+.pressure-bar-fill.mid  { background: #f59e0b; }
+.pressure-bar-fill.low  { background: #ef4444; }
+
+.pressure-edit {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-size: 0.78rem;
+}
+
+.pressure-val {
+    width: 48px;
+    padding: 0.18rem 0.3rem;
+    background: var(--bg-black);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-white);
+    font-size: 0.78rem;
+    text-align: right;
+}
+
+.pressure-unit {
+    color: var(--text-muted);
+}
+
+.pressure-kg-label {
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    min-width: 36px;
+}
+
+.trailer-remove-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0 0.15rem;
+    transition: color 0.15s;
+}
+
+.trailer-remove-btn:hover {
+    color: #ef4444;
+}
+
+/* 재고 설정(대기차량, 납품소요) */
+.inv-settings {
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    padding-top: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.inv-setting-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.83rem;
+}
+
+.inv-setting-row label {
+    color: var(--text-muted);
+    min-width: 88px;
+    white-space: nowrap;
+}
+
+.inv-setting-input {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.inv-setting-input input {
+    width: 50px;
+    padding: 0.22rem 0.4rem;
+    background: var(--bg-black);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-white);
+    font-size: 0.83rem;
+    text-align: center;
+}
+
+.inv-setting-hint {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+/* 발주 예측 패널 */
+.pred-urgency {
+    padding: 0.55rem 0.8rem;
+    border-radius: 8px;
+    font-size: 0.88rem;
+    margin-bottom: 0.9rem;
+    font-weight: 500;
+}
+
+.pred-urgency.safe     { background: rgba(34, 197, 94, 0.12); color: #4ade80; }
+.pred-urgency.warning  { background: rgba(245, 158, 11, 0.14); color: #fbbf24; }
+.pred-urgency.critical { background: rgba(239, 68, 68, 0.14); color: #f87171; }
+
+.pred-stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    margin-bottom: 0.9rem;
+}
+
+.pred-stat {
+    padding: 0.55rem 0.7rem;
+    background: var(--bg-dark);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.pred-stat-label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+.pred-stat-val {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--text-white);
+}
+
+.pred-stat-val.accent {
+    color: var(--h2-blue-light);
+}
+
+.pred-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.pred-timeline-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.84rem;
+    padding: 0.5rem 0.7rem;
+    background: var(--bg-dark);
+    border-radius: 6px;
+}
+
+.pred-timeline-item.order-rec {
+    border-left: 3px solid var(--h2-blue);
+}
+
+.pred-timeline-label {
+    color: var(--text-muted);
+}
+
+.pred-timeline-date {
+    font-weight: 600;
+}
+
+.pred-timeline-date.safe     { color: #4ade80; }
+.pred-timeline-date.warning  { color: #fbbf24; }
+.pred-timeline-date.critical { color: #f87171; }
+
+.pred-lead-note {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-align: center;
+    margin-top: 0.2rem;
+    padding: 0.3rem 0;
 }
 
 .order-form-card,

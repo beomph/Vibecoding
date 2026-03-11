@@ -289,10 +289,7 @@ function getSupplierStatusLabel(order) {
 }
 
 function getActorForOrder(order) {
-    const me = auth?.name || currentUser.name;
-    if (order?.consumerName === me) return 'consumer';
-    if (order?.supplierName === me) return 'supplier';
-    return currentUser.type === 'supplier' ? 'supplier' : 'consumer';
+    return currentUser.type;
 }
 
 // 주문 수량 계산 (트레일러 대수 * 용량)
@@ -402,12 +399,177 @@ function normalizeStatus(status) {
     return 'received';
 }
 
+// ========== 재고 현황 & 발주 예측 ==========
+const INVENTORY_KEY = 'h2go_inventory';
+const INV_MAX_PRESSURE = 200; // bar
+const INV_KG_PER_TRAILER = 400; // kg (만충 기준)
+
+function defaultInventory() {
+    return {
+        trailers: [
+            { id: 1, pressure: 200 },
+            { id: 2, pressure: 155 },
+            { id: 3, pressure: 70 }
+        ],
+        waitingVehicles: 0,
+        leadTimeDays: 2
+    };
+}
+
+function readInventory() {
+    return safeJsonParse(localStorage.getItem(INVENTORY_KEY), null) || defaultInventory();
+}
+
+function saveInventory(data) {
+    try { localStorage.setItem(INVENTORY_KEY, JSON.stringify(data)); } catch (_) {}
+}
+
+function getAvgDailyConsumptionKg() {
+    const me = auth?.name || currentUser.name;
+    const myOrders = orders.filter(o =>
+        o.consumerName === me && o.status !== 'cancelled' && o.createdAt
+    );
+    if (myOrders.length === 0) return 100;
+    const cutoff = Date.now() - 30 * 86400000;
+    const recent = myOrders.filter(o => new Date(o.createdAt).getTime() > cutoff);
+    if (recent.length === 0) return 100;
+    const totalKg = recent.reduce((s, o) => s + (o.tubeTrailers || 1) * INV_KG_PER_TRAILER, 0);
+    return Math.max(1, totalKg / 30);
+}
+
+function renderInventoryPanel() {
+    const listEl = document.getElementById('trailerStatusList');
+    if (!listEl) return;
+
+    const inv = readInventory();
+    const kgPerBar = INV_KG_PER_TRAILER / INV_MAX_PRESSURE;
+
+    listEl.innerHTML = inv.trailers.map(t => {
+        const pct = Math.min(100, Math.round((t.pressure / INV_MAX_PRESSURE) * 100));
+        const kg = Math.round(t.pressure * kgPerBar);
+        const lvl = pct > 60 ? 'full' : pct > 25 ? 'mid' : 'low';
+        return `
+            <div class="trailer-row">
+                <span class="trailer-id">#${t.id}</span>
+                <div class="pressure-bar-bg">
+                    <div class="pressure-bar-fill ${lvl}" style="width:${pct}%"></div>
+                </div>
+                <div class="pressure-edit">
+                    <input type="number" class="pressure-val" data-id="${t.id}"
+                        value="${t.pressure}" min="0" max="${INV_MAX_PRESSURE}">
+                    <span class="pressure-unit">bar</span>
+                    <span class="pressure-kg-label">${kg}kg</span>
+                </div>
+                <button type="button" class="trailer-remove-btn" data-id="${t.id}" title="삭제">×</button>
+            </div>`;
+    }).join('') || `<p style="font-size:0.85rem;color:var(--text-muted);padding:0.4rem 0">트레일러 없음</p>`;
+
+    listEl.querySelectorAll('.pressure-val').forEach(inp => {
+        inp.addEventListener('change', () => {
+            const inv2 = readInventory();
+            const t = inv2.trailers.find(x => x.id === parseInt(inp.dataset.id));
+            if (t) {
+                t.pressure = Math.max(0, Math.min(INV_MAX_PRESSURE, parseInt(inp.value) || 0));
+                saveInventory(inv2);
+                renderInventoryPanel();
+            }
+        });
+    });
+
+    listEl.querySelectorAll('.trailer-remove-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const inv2 = readInventory();
+            inv2.trailers = inv2.trailers.filter(t => t.id !== parseInt(btn.dataset.id));
+            saveInventory(inv2);
+            renderInventoryPanel();
+        });
+    });
+
+    const waitEl = document.getElementById('waitingVehicles');
+    if (waitEl && document.activeElement !== waitEl) waitEl.value = inv.waitingVehicles;
+    const leadEl = document.getElementById('leadTimeDays');
+    if (leadEl && document.activeElement !== leadEl) leadEl.value = inv.leadTimeDays;
+
+    renderPrediction(inv);
+}
+
+function renderPrediction(inv) {
+    const predEl = document.getElementById('predictionDisplay');
+    if (!predEl) return;
+
+    const kgPerBar = INV_KG_PER_TRAILER / INV_MAX_PRESSURE;
+    const trailerKg = inv.trailers.reduce((s, t) => s + t.pressure * kgPerBar, 0);
+    const incomingKg = (inv.waitingVehicles || 0) * INV_KG_PER_TRAILER;
+    const totalKg = trailerKg + incomingKg;
+
+    const dailyKg = getAvgDailyConsumptionKg();
+    const daysLeft = dailyKg > 0 ? totalKg / dailyKg : Infinity;
+    const leadDays = inv.leadTimeDays || 2;
+    const daysToOrder = daysLeft - leadDays;
+
+    const now = new Date();
+    const fmtDate = d => {
+        const wd = ['일','월','화','수','목','금','토'][d.getDay()];
+        return `${d.getMonth()+1}/${d.getDate()}(${wd})`;
+    };
+    const depleteDate = new Date(now.getTime() + daysLeft * 86400000);
+    const orderDate = new Date(now.getTime() + Math.max(0, daysToOrder) * 86400000);
+
+    const urgency = daysToOrder <= 0 ? 'critical' : daysToOrder <= 1.5 ? 'warning' : 'safe';
+    const urgencyLabel = { safe: '여유 — 재고 충분', warning: '주의 — 곧 발주 필요', critical: '긴급 — 즉시 발주!' }[urgency];
+    const urgencyIcon = { safe: '✅', warning: '⚠️', critical: '🚨' }[urgency];
+
+    const isDefaultConsumption = orders.filter(o =>
+        o.consumerName === (auth?.name || currentUser.name) && o.status !== 'cancelled'
+    ).length === 0;
+
+    predEl.innerHTML = `
+        <div class="pred-urgency ${urgency}">${urgencyIcon} ${urgencyLabel}</div>
+
+        <div class="pred-stat-grid">
+            <div class="pred-stat">
+                <span class="pred-stat-label">현재 잔량</span>
+                <span class="pred-stat-val">${Math.round(trailerKg).toLocaleString()} kg</span>
+            </div>
+            <div class="pred-stat">
+                <span class="pred-stat-label">입고 예정</span>
+                <span class="pred-stat-val">${incomingKg.toLocaleString()} kg</span>
+            </div>
+            <div class="pred-stat">
+                <span class="pred-stat-label">총 가용량</span>
+                <span class="pred-stat-val accent">${Math.round(totalKg).toLocaleString()} kg</span>
+            </div>
+            <div class="pred-stat">
+                <span class="pred-stat-label">일평균 소비${isDefaultConsumption ? ' *' : ''}</span>
+                <span class="pred-stat-val">${Math.round(dailyKg).toLocaleString()} kg</span>
+            </div>
+        </div>
+
+        <div class="pred-timeline">
+            <div class="pred-timeline-item">
+                <span class="pred-timeline-label">재고 소진 예상</span>
+                <span class="pred-timeline-date ${urgency}">
+                    ${isFinite(daysLeft) ? fmtDate(depleteDate) + ' (약 ' + daysLeft.toFixed(1) + '일 후)' : '충분'}
+                </span>
+            </div>
+            <div class="pred-timeline-item order-rec">
+                <span class="pred-timeline-label">⚡ 권장 발주 시점</span>
+                <span class="pred-timeline-date ${urgency}">
+                    ${daysToOrder <= 0 ? '즉시 발주 필요!' : fmtDate(orderDate) + ' (약 ' + daysToOrder.toFixed(1) + '일 후)'}
+                </span>
+            </div>
+            <p class="pred-lead-note">납품 소요 ${leadDays}일 기준${isDefaultConsumption ? ' · * 주문 이력 없어 일소비 100kg 가정' : ' · 최근 30일 주문 기반'}</p>
+        </div>
+    `;
+}
+
 function renderConsumerView() {
     const list = document.getElementById('consumerOrdersList');
     const myOrders = getConsumerOrders(currentUser.name);
 
     if (myOrders.length === 0) {
-        list.innerHTML = '<div class="empty-state"><p>등록된 주문이 없습니다.</p><p>위 폼에서 새 주문을 등록하세요.</p></div>';
+        list.innerHTML = '<div class="empty-state"><p>등록된 주문이 없습니다.</p><p>새 주문을 등록하세요.</p></div>';
+        renderInventoryPanel();
         return;
     }
 
@@ -449,6 +611,8 @@ function renderConsumerView() {
             </div>
         </div>
     `}).join('');
+
+    renderInventoryPanel();
 }
 
 function renderOrdersTable(tbodyId, showActions) {
@@ -837,7 +1001,7 @@ document.getElementById('orderForm').addEventListener('submit', (e) => {
         month: parseInt(document.getElementById('orderMonth').value),
         day: parseInt(document.getElementById('orderDay').value),
         time: `${String(document.getElementById('orderHour').value).padStart(2, '0')}:${document.getElementById('orderMinute').value}`,
-        tubeTrailers: parseInt(document.getElementById('orderTrailers').value),
+        tubeTrailers: 1,
         address: document.getElementById('orderAddress').value,
         note: document.getElementById('orderNote').value,
         status: 'received',
@@ -886,20 +1050,30 @@ document.getElementById('changeRequestForm').addEventListener('submit', (e) => {
 });
 
 document.getElementById('approveChangeBtn').addEventListener('click', () => {
-    if (pendingApprovalOrderId) applyChange(pendingApprovalOrderId, true);
+    if (!pendingApprovalOrderId) return;
+    applyChange(pendingApprovalOrderId, true);
     alert('변경이 확정되었습니다. 주문 상태가 "주문 확정"으로 변경됩니다.');
 });
 
 document.getElementById('rejectChangeBtn').addEventListener('click', () => {
-    if (pendingApprovalOrderId) applyChange(pendingApprovalOrderId, false);
+    if (!pendingApprovalOrderId) return;
+    applyChange(pendingApprovalOrderId, false);
     alert('변경 요청이 거절되었습니다. 주문 상태가 원래 상태로 되돌아갑니다.');
 });
 
 document.getElementById('changeRequestModal').addEventListener('click', (e) => {
-    if (e.target.id === 'changeRequestModal') e.target.classList.remove('active');
+    if (e.target === e.currentTarget) e.target.classList.remove('active');
 });
 document.getElementById('orderMapModal').addEventListener('click', (e) => {
-    if (e.target.id === 'orderMapModal') closeOrderMapModal();
+    if (e.target === e.currentTarget) closeOrderMapModal();
+});
+document.getElementById('changeApprovalModal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) e.target.classList.remove('active');
+});
+
+// 모달 content 안쪽 클릭이 백드롭까지 버블링되어 모달이 닫히는 것 방지
+document.querySelectorAll('.modal-content').forEach(el => {
+    el.addEventListener('click', e => e.stopPropagation());
 });
 document.querySelector('#orderMapModal .modal-close')?.addEventListener('click', closeOrderMapModal);
 document.addEventListener('keydown', (e) => {
@@ -909,9 +1083,6 @@ document.addEventListener('keydown', (e) => {
 });
 document.querySelector('#changeRequestModal .modal-close').addEventListener('click', () => {
     document.getElementById('changeRequestModal').classList.remove('active');
-});
-document.getElementById('changeApprovalModal').addEventListener('click', (e) => {
-    if (e.target.id === 'changeApprovalModal') e.target.classList.remove('active');
 });
 document.querySelector('#changeApprovalModal .modal-close').addEventListener('click', () => {
     document.getElementById('changeApprovalModal').classList.remove('active');
@@ -1003,6 +1174,29 @@ document.addEventListener('click', (e) => {
 });
 
 document.getElementById('recalculateBtn')?.addEventListener('click', () => renderSupplierView());
+
+// ========== 재고 패널 이벤트 ==========
+document.getElementById('addTrailerBtn')?.addEventListener('click', () => {
+    const inv = readInventory();
+    const maxId = inv.trailers.reduce((m, t) => Math.max(m, t.id), 0);
+    inv.trailers.push({ id: maxId + 1, pressure: INV_MAX_PRESSURE });
+    saveInventory(inv);
+    renderInventoryPanel();
+});
+
+document.getElementById('waitingVehicles')?.addEventListener('change', (e) => {
+    const inv = readInventory();
+    inv.waitingVehicles = Math.max(0, parseInt(e.target.value) || 0);
+    saveInventory(inv);
+    renderPrediction(inv);
+});
+
+document.getElementById('leadTimeDays')?.addEventListener('change', (e) => {
+    const inv = readInventory();
+    inv.leadTimeDays = Math.max(1, parseInt(e.target.value) || 2);
+    saveInventory(inv);
+    renderPrediction(inv);
+});
 
 // 초기화
 const initialRole = (currentUser.type === 'supplier' || currentUser.type === 'consumer') ? currentUser.type : 'consumer';
