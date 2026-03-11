@@ -68,13 +68,6 @@ function redirectToLogin() {
 // ========== 데이터 구조 ==========
 const TRAILER_CAPACITY_KG = 400; // 트레일러 1대당 kg (기본)
 const PRODUCTION_SITE = { name: '인천 수소생산공장', address: '인천시 남동구 논현고잔로 123', lat: 37.4489, lng: 126.7317 };
-const DEMAND_SITES = [
-    { id: 'site1', name: '서울 강남 충전소', address: '서울시 강남구 테헤란로 123', travelTime: 60, lat: 37.5012, lng: 127.0396 },
-    { id: 'site2', name: '인천 공항 물류센터', address: '인천시 중구 공항로 272', travelTime: 40, lat: 37.4602, lng: 126.4407 },
-    { id: 'site3', name: '수원 산업단지', address: '경기도 수원시 영통구 광교중앙로 120', travelTime: 50, lat: 37.2839, lng: 127.0446 },
-    { id: 'site4', name: '안산 수소충전소', address: '경기도 안산시 단원구 중앙대로 123', travelTime: 75, lat: 37.3219, lng: 126.8309 },
-    { id: 'site5', name: '부천 물류기지', address: '경기도 부천시 원미구 중동로 100', travelTime: 55, lat: 37.5034, lng: 126.7660 }
-];
 
 // 주소별 운송시간 (분)
 function getTravelTimeFromAddress(addr) {
@@ -96,10 +89,81 @@ function getCoordinatesFromAddress(addr) {
     return found ? { lat: found.lat, lng: found.lng } : { lat: 37.5, lng: 127.0 };
 }
 
-let orders = JSON.parse(localStorage.getItem('h2go_orders') || '[]');
+function deepClone(v) {
+    return safeJsonParse(JSON.stringify(v), v);
+}
+
+function readOrdersFromStorage() {
+    return safeJsonParse(localStorage.getItem('h2go_orders') || '[]', []);
+}
+
+let orders = readOrdersFromStorage();
 let currentUser = { type: 'consumer', name: '수요자 A' };
 let pendingApprovalOrderId = null;
 let selectedSupplierName = null;
+let lastOrdersSnapshot = deepClone(orders);
+
+// ========== 주문 결정 알림(상대방 탭에서 1회만) ==========
+function getNotifyKeyPrefix() {
+    const a = getAuth();
+    const who = a?.id ? `id:${a.id}` : (a?.name ? `name:${a.name}` : "anon");
+    return `h2go_notified_v1:${who}`;
+}
+
+function readNotifiedMap() {
+    try {
+        const raw = localStorage.getItem(getNotifyKeyPrefix()) || "{}";
+        const parsed = safeJsonParse(raw, {});
+        return (parsed && typeof parsed === "object") ? parsed : {};
+    } catch (_) {
+        return {};
+    }
+}
+
+function writeNotifiedMap(map) {
+    try {
+        localStorage.setItem(getNotifyKeyPrefix(), JSON.stringify(map || {}));
+    } catch (_) {}
+}
+
+function notifyOnce(eventKey, message) {
+    if (!eventKey || !message) return;
+    const m = readNotifiedMap();
+    if (m[eventKey]) return;
+    m[eventKey] = 1;
+    writeNotifiedMap(m);
+    alert(message);
+}
+
+function detectAndNotifyChangeDecisions(prevOrders, nextOrders) {
+    const me = getAuth()?.name || currentUser.name;
+    if (!me) return;
+
+    const prevById = new Map((prevOrders || []).map(o => [o?.id, o]));
+    for (const next of (nextOrders || [])) {
+        if (!next?.id) continue;
+        const prev = prevById.get(next.id);
+        const last = next.lastChange;
+        if (!last || !last.decidedAt || !last.requestedBy || !last.result) continue;
+
+        const iAmConsumer = next.consumerName === me;
+        const iAmSupplier = next.supplierName === me;
+        if (!iAmConsumer && !iAmSupplier) continue;
+
+        // 내가 요청자였던 변경 요청이 상대방에 의해 결정되었을 때만 알림
+        const iRequested = (last.requestedBy === "consumer" && iAmConsumer) || (last.requestedBy === "supplier" && iAmSupplier);
+        if (!iRequested) continue;
+
+        // 이미 이전 스냅샷에서도 같은 결정이 존재하면(예: 페이지 새로고침 직후) 알림 생략
+        const prevLast = prev?.lastChange;
+        const alreadyHadSameDecision = prevLast?.decidedAt === last.decidedAt && prevLast?.result === last.result && prevLast?.requestedBy === last.requestedBy;
+        if (alreadyHadSameDecision) continue;
+
+        const eventKey = `change:${next.id}:${last.decidedAt}:${last.result}:${last.requestedBy}`;
+        const resultText = last.result === "approved" ? "승인(확정)" : "거절";
+        notifyOnce(eventKey, `주문 변경 요청 결과 알림\n\n- 주문번호: ${next.id}\n- 결과: ${resultText}\n- 요약: ${last.summary || "-"}`);
+    }
+}
 
 // 로그인 체크 (대시보드는 로그인 필요)
 const urlParams = new URLSearchParams(window.location.search);
@@ -114,14 +178,11 @@ if (auth) {
 }
 
 // KOGAS 데모 계정: 남아있는 주문 전체 1회 정리
-// - 사용자가 요청한 "KOGAS에 떠있는 모든 주문 삭제"를 위해 localStorage의 주문을 정리합니다.
-// - 한 번만 실행되도록 플래그를 남깁니다.
 try {
     const KOGAS_PURGE_FLAG = "h2go_purged_kogas_orders_v1";
     if (auth?.id === "kogas" && !localStorage.getItem(KOGAS_PURGE_FLAG)) {
         const me = auth.name;
         orders = (orders || []).filter(o => {
-            // 내 수요 주문 / 내게 들어온 공급 주문 / 공급자 미지정(레거시로 인해 내 화면에 뜰 수 있음) 모두 제거
             const consumerMatch = (o?.consumerName || "") === me;
             const supplierMatch = !o?.supplierName || (o?.supplierName || "") === me;
             return !(consumerMatch || supplierMatch);
@@ -161,14 +222,10 @@ function getConsumerOrders(consumerName) {
 }
 
 function getSupplierOrders(supplierName) {
-    // 신규 주문부터는 supplierName을 저장해서 "어느 사업자에게 공급 요청인지"를 명확히 함
-    // 레거시 데이터(supplierName 없음)는 기존 동작 유지(전체 표시)할 수도 있지만,
-    // 요구사항(실제 주문만 표시)에 맞춰 여기서는 현재 사업자 기준으로 필터링합니다.
     return orders.filter(o => (o.supplierName || supplierName) === supplierName);
 }
 
 function getAllOrders() {
-    // 공급모드에서 보여줄 주문: "현재 사업자에게 들어온 공급 요청"만
     const supplierName = auth?.name || currentUser.name;
     const scoped = getSupplierOrders(supplierName);
     return scoped
@@ -220,10 +277,15 @@ function getCancelBadgeText(order) {
 }
 
 function getSupplierStatusLabel(order) {
-    // 공급 대시보드 상태: 최초접수 / 변경접수 / 취소요청 만 표시
-    if (order?.cancelRequest?.status === 'pending' || normalizeStatus(order?.status) === 'cancel_requested') return '취소 요청';
-    if (order?.changeRequest?.status === 'pending' || normalizeStatus(order?.status) === 'change_requested') return '변경접수';
-    return '최초접수';
+    const status = normalizeStatus(order?.status);
+    if (order?.cancelRequest?.status === 'pending' || status === 'cancel_requested') return '취소 요청';
+    if (order?.changeRequest?.status === 'pending' || status === 'change_requested') return '변경 요청';
+    if (status === 'confirmed') return '주문 확정';
+    if (status === 'reviewing') return '검토 중';
+    if (status === 'on_hold') return '보류';
+    if (status === 'received') return '접수(최초)';
+    if (status === 'cancelled') return '취소됨';
+    return getStatusLabel(status);
 }
 
 function getActorForOrder(order) {
@@ -313,11 +375,11 @@ function showView(viewId) {
     document.getElementById(viewId + 'View').classList.add('active');
 }
 
-// 주문 상태: 접수(최초), 검토 중, 확정, 보류, 변경 요청, 취소 요청(삭제 요청), 취소됨
+// 주문 상태: 접수(최초), 검토 중, 주문 확정, 보류, 변경 요청, 취소 요청(삭제 요청), 취소됨
 const ORDER_STATUSES = [
     { value: 'received', label: '접수(최초)' },
     { value: 'reviewing', label: '검토 중' },
-    { value: 'confirmed', label: '확정' },
+    { value: 'confirmed', label: '주문 확정' },
     { value: 'on_hold', label: '보류' },
     { value: 'change_requested', label: '변경 요청' },
     { value: 'cancel_requested', label: '취소 요청' },
@@ -328,7 +390,7 @@ function getStatusLabel(status) {
     const s = ORDER_STATUSES.find(o => o.value === status);
     if (s) return s.label;
     // 레거시 매핑
-    const legacy = { pending: '검토 중', confirmed: '확정', change_requested_consumer: '변경 요청', change_requested_supplier: '변경 요청' };
+    const legacy = { pending: '검토 중', confirmed: '주문 확정', change_requested_consumer: '변경 요청', change_requested_supplier: '변경 요청' };
     return legacy[status] || status;
 }
 
@@ -359,10 +421,9 @@ function renderConsumerView() {
 
         const status = normalizeStatus(order.status);
         const canRequestChange = !hasPendingChange && !hasPendingCancel && ['reviewing', 'confirmed', 'received'].includes(status);
-        // 취소요청이 거절된 경우: 요청자에게 "취소 불가"로 표시하고 재요청은 막음(스팸 방지)
         const canRequestCancel = !hasPendingCancel && !hasPendingChange && !hasRejectedCancel && ['reviewing', 'confirmed', 'received', 'cancel_requested', 'change_requested'].includes(status);
 
-        // 상대방이 요청한 변경/취소는 수요모드에서 승인/거절 가능
+        // 상대방(공급자)이 요청한 변경/취소는 수요모드에서 확정/거절 가능
         const canApproveChange = hasPendingChange && cr.requestedBy === 'supplier';
         const canApproveCancel = hasPendingCancel && cancelReq.requestedBy === 'supplier';
 
@@ -381,7 +442,7 @@ function renderConsumerView() {
             <div class="order-actions">
                 ${canRequestChange ? `<button type="button" class="btn btn-small" data-action="request-change" data-id="${order.id}">변경</button>` : ''}
                 ${canRequestCancel ? `<button type="button" class="btn btn-small btn-secondary" data-action="request-cancel" data-id="${order.id}">취소</button>` : ''}
-                ${canApproveChange ? `<button type="button" class="btn btn-small btn-primary" data-action="approve-change" data-id="${order.id}">변경 승인</button>
+                ${canApproveChange ? `<button type="button" class="btn btn-small btn-primary" data-action="approve-change" data-id="${order.id}">변경 확정</button>
                 <button type="button" class="btn btn-small btn-secondary" data-action="reject-change" data-id="${order.id}">변경 거절</button>` : ''}
                 ${canApproveCancel ? `<button type="button" class="btn btn-small btn-primary" data-action="approve-cancel" data-id="${order.id}">취소 승인</button>
                 <button type="button" class="btn btn-small btn-secondary" data-action="reject-cancel" data-id="${order.id}">취소 거절</button>` : ''}
@@ -429,10 +490,10 @@ function renderOrdersTable(tbodyId, showActions) {
                 ${cancelBadge ? `<div class="change-summary">${cancelBadge}</div>` : ''}
             </td>
             <td class="table-actions">
-                ${canConfirm ? `<button type="button" class="btn btn-tiny btn-primary" data-action="confirm-order" data-id="${o.id}">확정</button>` : ''}
+                ${canConfirm ? `<button type="button" class="btn btn-tiny btn-primary" data-action="confirm-order" data-id="${o.id}">주문 확정</button>` : ''}
                 ${canProposeChange ? `<button type="button" class="btn btn-tiny" data-action="request-change" data-id="${o.id}">변경</button>` : ''}
                 ${canRequestCancel ? `<button type="button" class="btn btn-tiny btn-secondary" data-action="request-cancel" data-id="${o.id}">취소</button>` : ''}
-                ${canApproveChange ? `<button type="button" class="btn btn-tiny btn-primary" data-action="approve-change" data-id="${o.id}">변경 승인</button>
+                ${canApproveChange ? `<button type="button" class="btn btn-tiny btn-primary" data-action="approve-change" data-id="${o.id}">변경 확정</button>
                 <button type="button" class="btn btn-tiny btn-secondary" data-action="reject-change" data-id="${o.id}">변경 거절</button>` : ''}
                 ${canApproveCancel ? `<button type="button" class="btn btn-tiny btn-primary" data-action="approve-cancel" data-id="${o.id}">취소 승인</button>
                 <button type="button" class="btn btn-tiny btn-secondary" data-action="reject-cancel" data-id="${o.id}">취소 거절</button>` : ''}
@@ -484,7 +545,7 @@ function renderSupplierView() {
     const scheduleEl = document.getElementById('transportSchedule');
 
     if (!transportPlan) {
-        if (aiPlanEl) aiPlanEl.innerHTML = '<div class="empty-state"><p>확정/검토 중 주문이 없습니다.</p></div>';
+        if (aiPlanEl) aiPlanEl.innerHTML = '<div class="empty-state"><p>주문이 없습니다.</p></div>';
         if (scheduleEl) scheduleEl.innerHTML = '';
     } else {
         if (aiPlanEl) {
@@ -627,7 +688,7 @@ function openChangeRequestModal(orderId, requestedBy) {
     document.getElementById('changeHour').value = h;
     document.getElementById('changeMinute').value = m || '00';
 
-    document.getElementById('changeModalTitle').textContent = requestedBy === 'consumer' ? '주문 변경 요청 (공급자 동의 필요)' : '주문 변경 제안 (수요자 동의 필요)';
+    document.getElementById('changeModalTitle').textContent = requestedBy === 'consumer' ? '주문 변경 요청 (공급자 확정 필요)' : '주문 변경 요청 (수요자 확정 필요)';
     document.getElementById('changeRequestModal').classList.add('active');
 }
 
@@ -649,7 +710,7 @@ function openApprovalModal(orderId) {
             <p><strong>주소:</strong> ${cr.proposed.address || order.address}</p>
         </div>
     `;
-    document.getElementById('approvalModalTitle').textContent = '변경 요청 검토 - 동의하시겠습니까?';
+    document.getElementById('approvalModalTitle').textContent = '변경 요청 검토 - 확정하시겠습니까?';
     document.getElementById('changeApprovalModal').classList.add('active');
 }
 
@@ -660,7 +721,8 @@ function applyChange(orderId, approved) {
     const decidedAt = new Date().toISOString();
     const p = order.changeRequest.proposed;
     const summary = summarizeChange(order, p);
-    const decidedBy = order.changeRequest.requestedBy === 'consumer' ? 'supplier' : 'consumer';
+    const requestedBy = order.changeRequest.requestedBy;
+    const decidedBy = requestedBy === 'consumer' ? 'supplier' : 'consumer';
 
     if (approved) {
         order.year = p.year;
@@ -669,13 +731,12 @@ function applyChange(orderId, approved) {
         order.time = p.time;
         order.tubeTrailers = p.tubeTrailers;
         if (p.address) order.address = p.address;
-        order.lastChange = { result: 'approved', summary, decidedAt, decidedBy };
+        order.lastChange = { result: 'approved', summary, decidedAt, decidedBy, requestedBy };
 
         order.changeRequest = null;
         order.status = 'confirmed';
     } else {
-        // 거절: 수요자에게 거절 표시가 남아야 하므로 changeRequest는 유지하되 status를 rejected로 변경
-        order.lastChange = { result: 'rejected', summary, decidedAt, decidedBy };
+        order.lastChange = { result: 'rejected', summary, decidedAt, decidedBy, requestedBy };
         order.changeRequest.status = 'rejected';
         order.changeRequest.decidedAt = decidedAt;
         order.changeRequest.decidedBy = decidedBy;
@@ -753,11 +814,9 @@ document.getElementById('roleSelect').addEventListener('change', (e) => {
     if (e.target.disabled) return;
     const role = e.target.value;
     currentUser.type = role;
-    // 사업자 계정은 동일(이름은 유지), 모드만 전환
     if (auth?.name) currentUser.name = auth.name;
     const bizEl = document.getElementById('bizName');
     if (bizEl) bizEl.textContent = currentUser.name;
-    // 마지막 선택 모드 저장
     try {
         const nextAuth = { ...auth, activeRole: role };
         localStorage.setItem(AUTH_KEY, JSON.stringify(nextAuth));
@@ -773,7 +832,7 @@ document.getElementById('orderForm').addEventListener('submit', (e) => {
     const order = {
         id: generateOrderId(),
         consumerName: currentUser.name,
-        supplierName, // 공급 대상(이 사업자에게 공급 요청). 같은 사업자 내에서 수요→공급 모드 전환 시 그대로 보이게 됨
+        supplierName,
         year: parseInt(document.getElementById('orderYear').value),
         month: parseInt(document.getElementById('orderMonth').value),
         day: parseInt(document.getElementById('orderDay').value),
@@ -810,25 +869,30 @@ document.getElementById('changeRequestForm').addEventListener('submit', (e) => {
         address: document.getElementById('changeAddress').value
     };
 
-    // 변경 요청 시점의 상태를 저장해, 거절 시 원상 복구 가능하게 함
-    order.changeRequest = { requestedBy, proposed, status: 'pending', originalStatus: normalizeStatus(order.status) };
+    order.changeRequest = {
+        requestedBy,
+        proposed,
+        status: 'pending',
+        requestedAt: new Date().toISOString(),
+        originalStatus: normalizeStatus(order.status),
+    };
     order.status = 'change_requested';
 
     localStorage.setItem('h2go_orders', JSON.stringify(orders));
     document.getElementById('changeRequestModal').classList.remove('active');
     renderConsumerView();
     renderSupplierView();
-    alert('변경 요청이 제출되었습니다. 상대방의 동의를 기다립니다.');
+    alert('변경 요청이 제출되었습니다. 상대방의 확정을 기다립니다.');
 });
 
 document.getElementById('approveChangeBtn').addEventListener('click', () => {
     if (pendingApprovalOrderId) applyChange(pendingApprovalOrderId, true);
-    alert('변경이 적용되었습니다.');
+    alert('변경이 확정되었습니다. 주문 상태가 "주문 확정"으로 변경됩니다.');
 });
 
 document.getElementById('rejectChangeBtn').addEventListener('click', () => {
     if (pendingApprovalOrderId) applyChange(pendingApprovalOrderId, false);
-    alert('변경 요청이 거절되었습니다.');
+    alert('변경 요청이 거절되었습니다. 주문 상태가 원래 상태로 되돌아갑니다.');
 });
 
 document.getElementById('changeRequestModal').addEventListener('click', (e) => {
@@ -864,6 +928,7 @@ document.addEventListener('click', (e) => {
         localStorage.setItem('h2go_orders', JSON.stringify(orders));
         renderConsumerView();
         renderSupplierView();
+        lastOrdersSnapshot = deepClone(orders);
     }
 
     function requestCancel(o, requestedBy) {
@@ -880,11 +945,8 @@ document.addEventListener('click', (e) => {
         const decidedBy = requestedBy === 'consumer' ? 'supplier' : 'consumer';
 
         if (approved) {
-            // 최종 삭제(양쪽에서 제거): 배열을 재할당해서 확실히 제거
-            // (일부 환경에서 splice 이후 렌더가 갱신되지 않는 케이스 방지)
             orders = orders.filter(x => x && x.id !== o.id);
         } else {
-            // 거절: 요청자에게 거절 표시가 남도록 cancelRequest 유지
             o.cancelRequest.status = 'rejected';
             o.cancelRequest.decidedAt = decidedAt;
             o.cancelRequest.decidedBy = decidedBy;
@@ -896,7 +958,6 @@ document.addEventListener('click', (e) => {
     if (action === 'request-change') {
         if (!order) return;
         const actor = getActorForOrder(order);
-        // 이미 대기 중 요청이 있으면 새 요청 불가
         if (order.changeRequest && order.changeRequest.status === 'pending') return;
         if (order.cancelRequest && order.cancelRequest.status === 'pending') return;
         openChangeRequestModal(orderId, actor);
@@ -909,13 +970,13 @@ document.addEventListener('click', (e) => {
         }
     } else if (action === 'confirm-order') {
         if (!order) return;
-        // 공급자가 확정 처리
         const actor = getActorForOrder(order);
         if (actor !== 'supplier') return;
         if (order.changeRequest?.status === 'pending' || order.cancelRequest?.status === 'pending') return;
         order.status = 'confirmed';
+        order.confirmedAt = new Date().toISOString();
         persistAndRerender();
-        alert('주문이 확정되었습니다.');
+        alert('주문이 "주문 확정" 상태로 변경되었습니다.');
     } else if (action === 'request-cancel') {
         if (!order) return;
         const actor = getActorForOrder(order);
@@ -933,7 +994,7 @@ document.addEventListener('click', (e) => {
     } else if (action === 'reject-cancel') {
         if (!order || !order.cancelRequest || order.cancelRequest.status !== 'pending') return;
         const reason = window.prompt("취소 요청 거절 사유를 입력해 주세요.", "");
-        if (reason === null) return; // 취소
+        if (reason === null) return;
         order.cancelRequest.reason = String(reason || "").trim();
         decideCancel(order, false);
         persistAndRerender();
@@ -954,22 +1015,25 @@ roleSelectEl.title = "수요/공급 모드를 전환할 수 있습니다.";
 
 initFormDefaults();
 initTimeInputs();
-setSupplierName(currentUser.name); // 기본 공급자 표시
+setSupplierName(currentUser.name);
 showView(initialRole);
 if (initialRole === 'consumer') renderConsumerView();
 if (initialRole === 'supplier') renderSupplierView();
 
-// 다른 탭/창에서 주문이 갱신되면 현재 화면도 즉시 반영
+// 다른 탭/창에서 주문이 갱신되면 현재 화면도 즉시 반영 + 결정 알림(거절/승인)
 window.addEventListener('storage', (e) => {
     if (!e) return;
     if (e.key !== 'h2go_orders') return;
+    const prev = lastOrdersSnapshot;
     try {
-        orders = JSON.parse(localStorage.getItem('h2go_orders') || '[]');
+        orders = readOrdersFromStorage();
     } catch (_) {
         orders = [];
     }
     renderConsumerView();
     renderSupplierView();
+    detectAndNotifyChangeDecisions(prev, orders);
+    lastOrdersSnapshot = deepClone(orders);
 });
 
 // 로그아웃
@@ -980,7 +1044,6 @@ document.getElementById('logoutBtn')?.addEventListener('click', () => {
 });
 
 // 구형 데이터 마이그레이션(예: quantity 기반 → tubeTrailers 기반)
-// - 데모 주문을 생성하지 않고, 기존 저장된 주문이 있다면 형태만 정리합니다.
 const needsMigration = orders.some(o => !o.tubeTrailers && o.quantity != null);
 if (needsMigration) {
     orders = orders.map(o => {
@@ -995,3 +1058,4 @@ if (needsMigration) {
     });
     localStorage.setItem('h2go_orders', JSON.stringify(orders));
 }
+

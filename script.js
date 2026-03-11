@@ -200,3 +200,4 @@ registerForm?.addEventListener('submit', (e) => {
     setAuth({ id, name, roles: [...DEFAULT_ROLES], activeRole: "consumer", loggedInAt: new Date().toISOString() });
     window.location.href = `dashboard.html`;
 });
+
