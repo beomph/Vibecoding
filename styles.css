@@ -57,22 +57,140 @@ body {
     align-items: center;
     justify-content: center;
     padding: 2rem;
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
     background:
-        radial-gradient(ellipse 70% 50% at 50% -10%, rgba(59, 130, 246, 0.18), transparent),
-        var(--bg-black);
+        radial-gradient(circle at top, rgba(59, 130, 246, 0.12), transparent 42%),
+        linear-gradient(180deg, #04070b 0%, #070b12 48%, #050608 100%);
+}
+
+.auth-only::before,
+.auth-only::after,
+.auth-only-main::before,
+.auth-only-card::before {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+}
+
+.auth-only::before,
+.auth-only::after,
+.auth-only-main::before {
+    will-change: transform, opacity;
+}
+
+.auth-only::before {
+    top: -18vmax;
+    left: -12vmax;
+    width: 44vmax;
+    height: 44vmax;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(96, 165, 250, 0.28) 0%, rgba(59, 130, 246, 0.12) 38%, rgba(59, 130, 246, 0) 72%);
+    opacity: 0.78;
+    animation: authGlowDrift 18s cubic-bezier(0.4, 0, 0.2, 1) infinite alternate;
+}
+
+.auth-only::after {
+    right: -16vmax;
+    bottom: -24vmax;
+    width: 52vmax;
+    height: 52vmax;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(148, 163, 184, 0.18) 0%, rgba(59, 130, 246, 0.08) 40%, rgba(59, 130, 246, 0) 74%);
+    opacity: 0.64;
+    animation: authGlowDriftReverse 24s cubic-bezier(0.4, 0, 0.2, 1) infinite alternate;
 }
 
 .auth-only-main {
     width: 100%;
     max-width: 520px;
+    position: relative;
+    z-index: 1;
+}
+
+.auth-only-main::before {
+    inset: -22% -30%;
+    background:
+        linear-gradient(115deg, rgba(255, 255, 255, 0.03) 0%, transparent 38%, transparent 62%, rgba(96, 165, 250, 0.08) 100%),
+        radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.05) 0%, transparent 26%);
+    opacity: 0.5;
+    transform: translate3d(-1%, -2%, 0) rotate(-7deg) scale(1.02);
+    z-index: -1;
+    animation: authSheenFloat 20s ease-in-out infinite alternate;
 }
 
 .auth-only-card {
-    background: rgba(26, 26, 26, 0.92);
-    border: 1px solid var(--border-color);
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    background: rgba(17, 24, 39, 0.72);
+    border: 1px solid rgba(148, 163, 184, 0.14);
     border-radius: 18px;
     padding: 2.5rem;
     box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
+}
+
+.auth-only-card > * {
+    position: relative;
+    z-index: 1;
+}
+
+.auth-only-card::before {
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 40%, transparent 68%, rgba(96, 165, 250, 0.06));
+    opacity: 0.85;
+}
+
+@keyframes authGlowDrift {
+    0% {
+        transform: translate3d(0, 0, 0) scale(0.96);
+        opacity: 0.54;
+    }
+    50% {
+        transform: translate3d(5%, 4%, 0) scale(1.02);
+        opacity: 0.76;
+    }
+    100% {
+        transform: translate3d(11%, 10%, 0) scale(1.08);
+        opacity: 0.62;
+    }
+}
+
+@keyframes authGlowDriftReverse {
+    0% {
+        transform: translate3d(0, 0, 0) scale(1);
+        opacity: 0.42;
+    }
+    50% {
+        transform: translate3d(-4%, -5%, 0) scale(1.05);
+        opacity: 0.62;
+    }
+    100% {
+        transform: translate3d(-9%, -11%, 0) scale(1.12);
+        opacity: 0.48;
+    }
+}
+
+@keyframes authSheenFloat {
+    0% {
+        transform: translate3d(-2%, -2%, 0) rotate(-8deg) scale(1.01);
+        opacity: 0.3;
+    }
+    100% {
+        transform: translate3d(2%, 3%, 0) rotate(-4deg) scale(1.05);
+        opacity: 0.58;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .auth-only::before,
+    .auth-only::after,
+    .auth-only-main::before {
+        animation: none;
+    }
 }
 
 /* 모바일에서 로그인 카드 여백/글자 크기 가독성 조정
